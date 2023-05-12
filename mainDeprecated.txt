@@ -1,0 +1,161 @@
+//add "type" : "module" to package.json to run this file!!!!!!
+import pg from 'pg';
+import readline from 'readline';
+import axios from 'axios';
+
+const {Client} = pg;
+
+const client = new Client({
+  host: 'localhost',
+  port: 5432,
+  user: 'postgres',
+  password: 'post',
+  database: 'gitUsersDB'
+});
+
+client
+  .connect()
+  .catch((err) => console.error('Oops. Connection error!', err.stack)); 
+
+const prompts = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+function drawMenu() {
+  console.log('1. Fetch user from GitHub and save to DB');
+  console.log('2. Display users');
+  console.log('3. Fetch users by location');
+  console.log('4. Delete user by username');
+  console.log('5. Fetch programming languages by user');
+  console.log('6. Exit');
+}
+
+async function ask(option) {
+  return new Promise(resolve => {
+    prompts.question(option, answer => resolve(answer));
+  });
+}
+
+async function fetchAndSaveUser() {
+
+  var username =  await new Promise(resolve => {
+  prompts.question('Enter git login username: ', username => resolve(username));
+  });
+
+  var url = `https://api.github.com/users/${username}`;
+  const response = await axios.get(url);
+  const login = response.data.login;
+
+  const checkQuery = `SELECT COUNT(*) FROM "Users" WHERE "userLogin" = '${login}'`;
+  const checkResult = await client.query(checkQuery);
+
+  if (checkResult.rows[0].count > 0) {
+    console.log(`User with login: ${username}, already exists in the database.`);
+    return;
+  }
+
+  const name = response.data.name;
+  const location = response.data.location;
+  const reposUrl = response.data.repos_url;
+  const bio = response.data.bio;
+  const languagesData = await axios.get(reposUrl);
+  const progLanguagesTemp = languagesData.data.map(repo => repo.language);
+  const progLanguages = progLanguagesTemp.filter((value, index, self) => self.indexOf(value) === index);
+  const userEmail = response.data.email;
+  const userTwitter = response.data.twitter_username;
+  
+  console.log('User has been fetched!');
+  console.log('Saving user to DB...');
+
+  const progLanguagesString = JSON.stringify(progLanguages);
+  const query = `INSERT INTO "Users" ("userLogin", "userName", "userLocation", "progLanguages", "userBio", "userEmail", "userTwitter") 
+    VALUES ('${login}', '${name}', '${location}', '${progLanguagesString}', '${bio}', '${userEmail}', '${userTwitter}')`;
+  
+  client.query(query)
+  console.log('User has been saved to DB!');
+  return;
+}
+
+async function displayUsers() {
+
+  const query = `SELECT * FROM "Users"`;
+  const result = await client.query(query);
+
+  if (result.rowCount === 0) {
+    console.log('There are no users in the database.');
+    return;
+  }
+
+  console.log('All users:');
+  console.log(result.rows);
+  return;
+}
+
+async function fetchProgLanguagesByUser() {
+  const userName = await ask('Enter git login username: ');
+  const query = `SELECT "progLanguages" FROM "Users" WHERE "userLogin" = '${userName}'`;
+  const result = await client.query(query);
+  console.log(`User has repositories in:`);
+  console.log(result.rows[0].progLanguages);
+}
+
+async function fetchUsersByLocation() {
+    const location = await ask('Enter location: ');
+    const query = `SELECT * FROM "Users" WHERE "userLocation" = '${location}'`;
+    const result = await client.query(query);
+    console.log(`Users in ${location}:`);
+    console.log(result.rows)
+  }
+
+async function deleteUserByUsername()
+{
+  const username = await ask('Enter git login username: ');
+
+  const checkQuery = `SELECT * FROM "Users" WHERE "userLogin" = '${username}'`;
+  const checkResult = await client.query(checkQuery);
+
+  if (checkResult.rowCount === 0) {
+    console.log('There are no users with that login username in the database.');
+    return;
+  }
+ 
+  const query = `DELETE FROM "Users" WHERE "userLogin" = '${username}'`;
+  const result = await client.query(query);
+  console.log(`User ${username} has been deleted!`);
+}
+
+async function main() {
+
+  drawMenu();
+  const option = await ask('Select an option: ');
+  
+    switch(option) {
+      case '1':
+        await fetchAndSaveUser();
+        break;
+      case '2':
+        await displayUsers();
+        break;
+      case '3':
+        await fetchUsersByLocation();
+        break;
+      case '4':
+        await deleteUserByUsername();
+        break;
+      case '5':
+        await fetchProgLanguagesByUser();
+        break;
+      case '6':
+        console.log('Bye!');
+        break;
+      default:
+        console.log('Invalid option!');
+        break;
+    }
+
+  prompts.close();
+  client.end();
+}
+
+main();

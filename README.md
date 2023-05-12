@@ -1,10 +1,11 @@
 # gitRestAPI
-This repository references a gitHub RestAPI developed in Node.js - typescript. 
+This repository references a gitHub RestAPI developed in Node.js - typescript, and uses postgreSQL as database.
 
 # Installation
 The necessary tools to run this project are Node.js and PostgreSQL 
 
 https://nodejs.org/en/download
+
 https://www.enterprisedb.com/downloads/postgres-postgresql-downloads
 
 # Set up
